@@ -1,0 +1,295 @@
+---
+title: "Models for social engagement"
+output: html_document
+---
+
+First I used data from Samples, I couldn't run multiple cross validations on it as doing one took hours. However, with this many datapoints it should be good enough to run it once. I run it on the dataframe I created, and didn't rerun it on Riccardo's, instead I ran everything again, but using Fixations from Riccardo's dataset, to see how different they would be. In both cases the best model is the same.
+
+
+```{r}
+
+# Fixations=read.csv('FixationsV2.csv')
+# Saccades=read.csv('SaccadesV2.csv')
+Samples=read.csv('SamplesV2.csv') #this is the dataset created by me, not the one we got from Riccardo!
+
+```
+
+
+```{r}
+
+#exclude visual search
+Samples_without= subset(Samples, c(Task== "SocialEngagement"))
+Samples_without= subset(Samples_without, !is.na(Fixation)) #everything other then fixation goes
+Samples_without= subset(Samples_without, !is.na(PupilSize))
+
+
+#create extra IDs for the folds
+Samples_without$extra_id= as.numeric(as.factor(as.character(Samples_without$ParticipantID)))
+
+Samples_without$TrialTime_sc= scale(Samples_without$TrialTime)
+
+```
+
+
+```{r cross_val function}
+cross_val= function(m) {
+  
+  #create a function for %not in% - from the net
+  "%not in%" <- function (x, table) is.na(match(x, table, nomatch=NA_integer_))
+  
+  #create empty dataframes to save output from cross-validation
+  croval_test= data.frame() #for the test data
+  croval_train= data.frame()
+  
+  folds=caret::createFolds(unique(Samples_without$extra_id), 3)
+  
+  #loop through the folds
+  for (i in folds) {
+    #this is the train data
+    two_fold = subset(Samples_without, extra_id %not in% i)
+    #this is the test data
+    one_fold= subset(Samples_without, extra_id %in% i)
+    # fit the model to 2/3 of the data
+    model= update(m, data= two_fold) 
+    
+    two_fold=subset(two_fold,!is.na(two_fold$PupilSize)) 
+    one_fold=subset(one_fold,!is.na(one_fold$PupilSize))
+    
+    #get rmse
+    pred= predict(model, two_fold, allow.new.levels=TRUE)
+    train_model_error = Metrics::rmse(two_fold$PupilSize, pred)
+    pred= predict(model, one_fold, allow.new.levels=TRUE)
+    test_model_error = Metrics::rmse(one_fold$PupilSize, pred)
+    # save the prediction to a dataframe
+    croval_train= rbind(croval_train, data.frame(train_model_error))
+    croval_test = rbind(croval_test, data.frame(test_model_error))
+    
+  }
+  
+  mean_tr=mean(croval_train[[1]])
+
+  mean_te=mean(croval_test[[1]])
+
+  fix_croval_means= cbind(mean_tr, mean_te)
+
+  return(fix_croval_means) 
+    
+}
+
+```
+
+
+Models for cross-validation - using cross-validation to see which one is the best model (rmse)
+
+```{r models}
+#models
+library(lmerTest)
+
+simpler = lmer(PupilSize ~ ostension + directionality + TrialTime_sc + (1 | extra_id) ,data= Samples_without, control = lmerControl(calc.derivs = FALSE)) 
+
+simple = lmer(PupilSize ~ ostension + directionality + TrialTime_sc + (1 + TrialTime_sc + ostension + directionality | extra_id) ,data= Samples_without, control = lmerControl(calc.derivs = FALSE)) 
+
+one = lmer(PupilSize ~ ostension * directionality * TrialTime_sc + (1 + TrialTime_sc + ostension + directionality | extra_id) ,data= Samples_without, control = lmerControl(calc.derivs = FALSE)) 
+
+two = lmer(PupilSize ~ ostension * directionality * (TrialTime_sc + I(TrialTime_sc^2)) + (1 + TrialTime_sc + ostension + directionality | extra_id) ,data= Samples_without, control = lmerControl(calc.derivs = FALSE)) 
+
+three = lmer(PupilSize ~ ostension * directionality * (TrialTime_sc + I(TrialTime_sc^2) + I(TrialTime_sc^3)) + (1 + TrialTime_sc + ostension + directionality | extra_id),data= Samples_without, control = lmerControl(calc.derivs = FALSE)) 
+
+# , control = lmerControl(calc.derivs = FALSE) to make it converge
+
+
+#run cross validation and get rmse 
+#they give a warning, convergence code 1 from bobyqa: bobyqa -- maximum number of function evaluations exceededconvergence code 1 from bobyqa: bobyqa -- maximum number of function evaluations exceeded, but they run and give back rmse
+
+croval_test_simpler=cross_val(simpler)
+croval_test_simple=cross_val(simple)
+croval_test_one=cross_val(one) 
+croval_test_two=cross_val(two) 
+croval_test_three=cross_val(three)
+
+write.csv(croval_test_simpler, "croval_test_simpler_pupil.csv")
+write.csv(croval_test_simple, "croval_test_simple_pupil.csv")
+write.csv(croval_test_one, "croval_test_one_pupil.csv")
+write.csv(croval_test_two, "croval_test_two_pupil.csv")
+write.csv(croval_test_three, "croval_test_three_pupil.csv")
+
+read.csv("croval_test_three_pupil.csv")
+
+# get mean of the three rmse (because of 3 folds)
+mean_simpler_tr=croval_test_simpler[[1]]
+mean_simple_tr=croval_test_simple[[1]]
+mean_one_tr=croval_test_one[[1]]
+mean_two_tr=croval_test_two[[1]]
+mean_three_tr=croval_test_three[[1]]
+
+mean_simpler_te=croval_test_simpler[[2]]
+mean_simple_te=croval_test_simple[[2]]
+mean_one_te=croval_test_one[[2]]
+mean_two_te=croval_test_two[[2]]
+mean_three_te=croval_test_three[[2]]
+
+
+fix_croval_means_tr= rbind(mean_simpler_tr, mean_simple_tr, mean_one_tr, mean_two_tr, mean_three_tr)
+
+fix_croval_means_te= rbind(mean_simpler_te, mean_simple_te, mean_one_te, mean_two_te, mean_three_te)
+
+
+
+#make it into dataframe, rownames will be the model's names
+fix_croval_means= as.data.frame(cbind(fix_croval_means_tr, fix_croval_means_te))
+
+rownames(fix_croval_means)= c("simpler", "simple", "one", "two", "three")
+colnames(fix_croval_means)= c("train", "test")
+
+
+#write out name of the model with lowest rmse = best model
+rownames(fix_croval_means)[apply(fix_croval_means, 2, which.min)]
+
+write.csv(fix_croval_means, "croval_means_pupil.csv")
+
+
+read.csv("croval_means_pupil.csv") # best is simple
+```
+
+
+```{r}
+simple = lmer(PupilSize ~ ostension + directionality + TrialTime_sc + (1 + TrialTime_sc + ostension + directionality | extra_id) ,data= Samples_without, control = lmerControl(calc.derivs = FALSE)) 
+
+summary(simple)
+
+```
+
+
+
+I decided to try and run it with Fixations, see how different it is
+Here I can run the cross validation multiple times
+This is just curiosity, I'm reporting the one from Samples
+
+
+```{r}
+Fixations=read.csv('FixationsR_new.csv') #Riccardo's
+```
+
+```{r}
+
+#exclude visual search
+Fixations_without= subset(Fixations, c(Task== "SocialEngagement"))
+Fixations_without= subset(Fixations_without, is.na(PupilSize) == F)
+
+
+#create extra IDs for the folds
+Fixations_without$extra_id= as.numeric(as.factor(as.character(Fixations_without$ParticipantID)))
+
+Fixations_without$TrialTime= Fixations_without$EndTime  - Fixations_without$StartTime
+
+Fixations_without$TrialTime_sc= scale(Fixations_without$TrialTime)
+
+```
+
+
+```{r cross_val function}
+cross_val= function(m) {
+  
+  #create a function for %not in% - from the net
+  "%not in%" <- function (x, table) is.na(match(x, table, nomatch=NA_integer_))
+  
+  #create empty dataframes to save output from cross-validation
+  croval_test= data.frame() #for the test data
+  croval_train= data.frame()
+  
+  folds=caret::createFolds(unique(Fixations_without$extra_id), 3)
+  
+  #loop through the folds
+  for (i in folds) {
+    #this is the train data
+    two_fold = subset(Fixations_without, extra_id %not in% i)
+    #this is the test data
+    one_fold= subset(Fixations_without, extra_id %in% i)
+    # fit the model to 2/3 of the data
+    model= update(m, data= two_fold) 
+    
+    two_fold=subset(two_fold,!is.na(two_fold$PupilSize)) 
+    one_fold=subset(one_fold,!is.na(one_fold$PupilSize))
+    
+    #get rmse
+    pred= predict(model, two_fold, allow.new.levels=TRUE)
+    train_model_error = Metrics::rmse(two_fold$PupilSize, pred)
+    pred= predict(model, one_fold, allow.new.levels=TRUE)
+    test_model_error = Metrics::rmse(one_fold$PupilSize, pred)
+    # save the prediction to a dataframe
+    croval_train= rbind(croval_train, data.frame(train_model_error))
+    croval_test = rbind(croval_test, data.frame(test_model_error))
+    
+  }
+  
+  mean_tr=mean(croval_train[[1]])
+
+  mean_te=mean(croval_test[[1]])
+
+  fix_croval_means= cbind(mean_tr, mean_te)
+
+  return(fix_croval_means) 
+    
+}
+
+```
+
+```{r}
+#models
+library(lmerTest)
+
+simpler = lmer(PupilSize ~ Ostension + Directionality + TrialTime_sc + (1 | extra_id) ,data= Fixations_without, control = lmerControl(calc.derivs = FALSE)) 
+
+simple = lmer(PupilSize ~ Ostension + Directionality + TrialTime_sc + (1 + TrialTime_sc + Ostension + Directionality | extra_id) ,data= Fixations_without, control = lmerControl(calc.derivs = FALSE)) 
+
+one = lmer(PupilSize ~ Ostension * Directionality * TrialTime_sc + (1 + TrialTime_sc + Ostension + Directionality | extra_id) ,data= Fixations_without, control = lmerControl(calc.derivs = FALSE)) 
+
+two = lmer(PupilSize ~ Ostension * Directionality * (TrialTime_sc + I(TrialTime_sc^2)) + (1 + TrialTime_sc + Ostension + Directionality | extra_id) ,data= Fixations_without, control = lmerControl(calc.derivs = FALSE)) 
+
+three = lmer(PupilSize ~ Ostension * Directionality * (TrialTime_sc + I(TrialTime_sc^2) + I(TrialTime_sc^3)) + (1 + TrialTime_sc + Ostension + Directionality | extra_id),data= Fixations_without, control = lmerControl(calc.derivs = FALSE)) 
+```
+
+
+```{r run crossval}
+
+#run the cross validation more than once, as the rmse seems to depend a lot on how the folds are created as the participant number is small
+
+models_all= c(one, two, three, simple, simpler)
+
+n=0 
+many=data.frame()
+
+
+while(n < 15) {
+  for (model in models_all) {
+    #cross validate function
+    cross=as.data.frame(cross_val(model))
+    #save the name of the model
+    sg=as.character(model@call$formula[3])
+    cross$name= sg 
+    #save everything to the dataframe
+    many=as.data.frame(rbind(many, cross))
+    
+  }
+  #go again until reaching 15
+  n=n+1
+}
+
+
+# I need the mean of the rmse-s
+
+library(tidyverse)
+
+fixation_rmse= many %>% group_by(name) %>% summarize (mean_train=mean(mean_tr), mean_test=mean(mean_te))
+
+```
+
+```{r}
+fixation_rmse #best is simple just like before
+
+simple = lmer(PupilSize ~ Ostension + Directionality + TrialTime_sc + (1 + TrialTime_sc + Ostension + Directionality | extra_id) ,data= Fixations_without, control = lmerControl(calc.derivs = FALSE)) 
+
+summary(simple)
+```
+
+

@@ -1,0 +1,263 @@
+---
+title: "Models for visual search"
+output: html_document
+
+---
+
+
+```{r}
+#read in the preprocessed data
+Fixations=read.csv('FixationsR_new.csv')
+Saccades=read.csv('SaccadesR_new.csv')
+#Samples=read.csv('SamplesR_new.csv')
+
+#get information of participants
+a= subset(Fixations, Task== "VisualSearch" & ParticipantGender== "female", c("ParticipantID", "ParticipantGender"))
+length(unique(a$"ParticipantID"))
+```
+
+
+For fixations: duration
+
+```{r excluding, models}
+
+#exclude social engagement
+Fixations_without= subset(Fixations, c(Task== "VisualSearch"))
+
+#create extra IDs for the folds
+Fixations_without$extra_id= as.numeric(as.factor(as.character(Fixations_without$ParticipantID)))
+
+#log transform the duration to decrease long tail
+Fixations_without$Duration_log= log(Fixations_without$Duration)
+
+
+#models
+
+library(lmerTest)
+
+normal = lmer(Duration_log ~ SearchType + Trial + (1 + SearchType|extra_id) ,data= Fixations_without)
+inter= lmer(Duration_log ~ SearchType * Trial + (1 + SearchType|extra_id),data= Fixations_without)
+simple= lmer(Duration_log ~ SearchType + (1 + SearchType|extra_id),data= Fixations_without)
+simpler= lmer(Duration_log ~ SearchType + (1|extra_id), data= Fixations_without)
+
+
+```
+
+
+```{r cross_val function}
+cross_val= function(m) {
+  
+  #create a function for %not in% - from the net
+  "%not in%" <- function (x, table) is.na(match(x, table, nomatch=NA_integer_))
+  
+  #create empty dataframes to save output from cross-validation
+  #croval= data.frame() 
+  croval_test= data.frame()
+  croval_train= data.frame()
+  
+  
+  folds=caret::createFolds(unique(Fixations_without$extra_id), 3)
+  
+  #loop through the folds
+  for (i in folds) {
+    #this is the train data
+    two_fold = subset(Fixations_without, extra_id %not in% i)
+    #this is the test data
+    one_fold= subset(Fixations_without, extra_id %in% i)
+    # fit the model to 2/3 of the data
+    model= update(m, data= two_fold) 
+    
+    two_fold=subset(two_fold,!is.na(two_fold$Duration_log)) 
+    one_fold=subset(one_fold,!is.na(one_fold$Duration_log))
+    
+    #get rmse
+    pred= predict(model, two_fold, allow.new.levels=TRUE)
+    train_model_error = Metrics::rmse(two_fold$Duration_log, pred)
+    pred= predict(model, one_fold, allow.new.levels=TRUE)
+    test_model_error = Metrics::rmse(one_fold$Duration_log, pred)
+    # save the prediction to a dataframe
+    croval_train= rbind(croval_train, data.frame(train_model_error))
+    croval_test = rbind(croval_test, data.frame(test_model_error))
+    
+  }
+  
+  mean_tr=mean(croval_train[[1]])
+
+  mean_te=mean(croval_test[[1]])
+
+  fix_croval_means= cbind(mean_tr, mean_te)
+
+  return(fix_croval_means) 
+}
+
+
+#save train also - you don't want a big difference.
+#get the model with smallest test rmse, then check the difference between train and test, if it's really big it's overfitted, so try to make new models.
+```
+
+```{r run crossval}
+
+#run the cross validation more than once, as the rmse seems to depend a lot on how the folds are created as the participant number is small
+
+models_all= c(normal, inter, simple, simpler)
+
+n=0 
+many=data.frame()
+
+
+while(n < 15) {
+  for (model in models_all) {
+    #cross validate function
+    cross=as.data.frame(cross_val(model))
+    #save the name of the model
+    sg=as.character(model@call$formula[3])
+    cross$name= sg 
+    #save everything to the dataframe
+    many=as.data.frame(rbind(many, cross))
+    
+  }
+  #go again until reaching 15
+  n=n+1
+}
+
+
+# I need the mean of the rmse-s
+
+library(tidyverse)
+
+fixation_rmse= many %>% group_by(name) %>% summarize (mean_train=mean(mean_tr), mean_test=mean(mean_te))
+
+
+```
+
+
+```{r best model}
+#the best model is
+
+simpler= lmer(Duration_log ~ SearchType + (1|extra_id), data= Fixations_without)
+inter= lmer(Duration_log ~ SearchType * Trial + (1 + SearchType|extra_id),data= Fixations_without)
+
+summary(inter)
+
+```
+
+
+
+
+
+
+
+
+For saccades: amplitude (length)
+
+```{r excluding, models}
+
+#exclude social engagement
+Saccades_without= subset(Saccades, c(Task== "VisualSearch"))
+
+#create extra IDs for the folds
+Saccades_without$extra_id= as.numeric(as.factor(as.character(Saccades_without$ParticipantID)))
+
+#log transform the duration to decrease long tail
+Saccades_without$Amplitude_log= log(Saccades_without$Amplitude)
+
+
+normal = lmer(Amplitude_log ~ SearchType + Trial + (1 + SearchType|extra_id) ,data= Saccades_without)
+inter= lmer(Amplitude_log ~ SearchType * Trial + (1 + SearchType|extra_id),data= Saccades_without)
+simple= lmer(Amplitude_log ~ SearchType + (1 + SearchType|extra_id),data= Saccades_without)
+simpler= lmer(Amplitude_log ~ SearchType + (1|extra_id), data= Saccades_without)
+
+```
+
+
+
+```{r cross_val function}
+cross_val= function(m) {
+  
+  #create a function for %not in% - from the net
+  "%not in%" <- function (x, table) is.na(match(x, table, nomatch=NA_integer_))
+  
+  #create empty dataframes to save output from cross-validation
+  #croval= data.frame() 
+  croval_test= data.frame()
+  croval_train= data.frame()
+  
+  
+  folds=caret::createFolds(unique(Saccades_without$extra_id), 3)
+  
+  #loop through the folds
+  for (i in folds) {
+    #this is the train data
+    two_fold = subset(Saccades_without, extra_id %not in% i)
+    #this is the test data
+    one_fold= subset(Saccades_without, extra_id %in% i)
+    # fit the model to 2/3 of the data
+    model= update(m, data= two_fold) 
+    
+    two_fold=subset(two_fold,!is.na(two_fold$Amplitude_log)) 
+    one_fold=subset(one_fold,!is.na(one_fold$Amplitude_log))
+    
+    #get rmse
+    pred= predict(model, two_fold, allow.new.levels=TRUE)
+    train_model_error = Metrics::rmse(two_fold$Amplitude_log, pred)
+    pred= predict(model, one_fold, allow.new.levels=TRUE)
+    test_model_error = Metrics::rmse(one_fold$Amplitude_log, pred)
+    # save the prediction to a dataframe
+    croval_train= rbind(croval_train, data.frame(train_model_error))
+    croval_test = rbind(croval_test, data.frame(test_model_error))
+    
+  }
+  
+  mean_tr=mean(croval_train[[1]])
+
+  mean_te=mean(croval_test[[1]])
+
+  fix_croval_means= cbind(mean_tr, mean_te)
+
+  return(fix_croval_means) 
+}
+
+```
+
+```{r run crossval}
+
+models_all= c(normal, inter, simple, simpler)
+
+n=0 
+many=data.frame()
+
+
+while(n < 15) {
+  for (model in models_all) {
+    #cross validate 
+    cross=as.data.frame(cross_val(model))
+    #name of the model
+    sg=as.character(model@call$formula[3])
+    cross$name= sg 
+    #save
+    many=as.data.frame(rbind(many, cross))
+    
+  }
+  
+  n=n+1
+}
+
+
+library(tidyverse)
+
+saccades_rmse= many %>% group_by(name) %>% summarize (mean_train=mean(mean_tr), mean_test=mean(mean_te))
+
+
+```
+
+
+
+
+```{r best model}
+
+
+summary(simpler)
+
+```
+
+

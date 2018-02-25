@@ -1,0 +1,112 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r}
+Fixations=read.csv('FixationsV1.csv')
+Saccades=read.csv('SaccadesV1.csv')
+Samples=read.csv('SamplesV1.csv')
+
+
+```
+
+
+
+```{r}
+# function to get out the info from the video file names
+
+get_info= function(name){
+  apple=name [[1]]  #should be the rows in the videos column (=fn in the loop)
+  actor_gender= substring(apple, 1, 1)
+  directionality= substring(apple, 9, 11)
+  ostension= substring(apple, 13, 14)
+  save= cbind(actor_gender, directionality, ostension) 
+  return(save)
+}
+
+```
+
+
+```{r}
+#use the list to read in everything
+file_list = list.files(path= "PupilsLogs", full.names=T)
+all_files=lapply(file_list, FUN=read.csv, header=TRUE)
+
+# I'm not sure why this works, but works, and only like this
+z=list(1,2,3,4,5,6)
+x=1
+videos=data.frame()
+
+for (y in z) {
+  y= z[[x]]
+  ParticipantID= all_files[[y]]$subject
+  id= as.data.frame(ParticipantID) #save the id to be able to merge
+  Trial= all_files[[y]]$X
+  tri= as.data.frame(Trial)
+  tri= tri +1 #save trial number - add one, because it started with 0 instead of 1
+  
+  file_name= all_files[[y]]$video
+  fn= as.data.frame(file_name) #it's a dataframe with one column with the video file names
+  info= get_info(fn) 
+  
+  final= cbind(id, tri, info)
+  videos= rbind(videos, final)
+  x=x+1
+  }
+```
+
+
+```{r}
+stim1=read.table("ForagingOrder1.txt", col.names =  "Stimulus")
+stim2=read.table("ForagingOrder2.txt", col.names =  "Stimulus")
+
+searchtype1= data.frame(c(rep("Count", times=5), rep("Search", times=5)))
+colnames(searchtype1) = "SearchType"
+
+searchtype2= data.frame(c(rep("Search", times=5), rep("Count", times=5)))
+colnames(searchtype2) = "SearchType"
+
+# searchorder1= data.frame(c(rep(1, times= 10)))
+# colnames(searchorder1) = "SearchOrder"
+# 
+# searchorder2= data.frame(c(rep(2, times= 10)))
+# colnames(searchorder2) = "SearchOrder"
+
+type1= cbind(stim1, searchtype1)
+type2= cbind(stim2, searchtype2)
+#according to their code trial is needed, and that's true, but why, if I have SearchOrder?
+#also if I do SearchOrder my way it doesn't seem to work - why?
+#why is bad to merge by="SearchOrder"?
+
+#their code
+type1$SearchOrder=1
+type2$SearchOrder=2
+type1$Trial=1:10
+type2$Trial=1:10
+
+type= rbind(type1, type2)
+
+Fixations2= merge(Fixations, type, all=T)
+Saccades2= merge(Saccades, type, all=T)
+Samples2= merge(Samples, type, all=T)
+
+```
+
+
+```{r}
+Fixations3= merge(Fixations2, videos, all = T)
+Saccades3= merge(Saccades2, videos, all=T)
+Samples3= merge(Samples2, videos, all=T)
+
+```
+
+
+```{r}
+write.csv(Saccades3,"SaccadesV2.csv")
+write.csv(Fixations3,"FixationsV2.csv")
+write.csv(Samples3,"SamplesV2.csv")
+```
+
+
+

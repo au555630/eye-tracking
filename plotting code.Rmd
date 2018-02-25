@@ -1,0 +1,211 @@
+---
+title: "Pupil plots"
+output: html_document
+---
+
+```{r}
+Fixations=read.csv('FixationsR_new.csv')
+Saccades=read.csv('SaccadesR_new.csv')
+Samples=read.csv('SamplesR_new.csv')
+
+Fixations$PositionYClean=1081-Fixations$PositionY
+
+Saccades$StartYClean=1081-Saccades$StartY
+Saccades$EndYClean=1081-Saccades$EndY
+
+Samples$PositionYClean=1081-Samples$PositionY
+```
+
+
+Riccardo's code
+```{r}
+
+#SANITY CHECKS
+
+library(ggplot2)
+#check for outliers
+ggplot(Fixations, aes(ParticipantID,Duration)) +
+  geom_boxplot() +
+  facet_grid(.~Task)
+
+
+#check distribution of fixations
+hist(Fixations$Duration[Fixations$Task=='VisualSearch']) #lognormal-ish
+hist(Fixations$Duration[Fixations$Task=='SocialEngagement']) #lognormal-ish
+
+ggplot(Fixations, aes(Duration,color=Task)) + geom_density()
+
+#check distribution of saccades
+hist(Saccades_without$Amplitude_log[Saccades$Task=='VisualSearch']) #lognormal-ish
+hist(Saccades$Amplitude[Saccades$Task=='SocialEngagement']) #lognormal-ish
+hist(Saccades$MeanVelocity[Saccades$Task=='VisualSearch']) #lognormal-ish
+hist(Saccades$MeanVelocity[Saccades$Task=='SocialEngagement']) #lognormal-ish
+hist(Saccades$PeakVelocity[Saccades$Task=='VisualSearch']) #lognormal-ish
+hist(Saccades$PeakVelocity[Saccades$Task=='SocialEngagement']) #lognormal-ish
+
+#check distribution of pupil size 
+hist(Samples$PupilSize[Samples$Task=='SocialEngagement']) #multimodal?
+ggplot(subset(Samples,Task=='SocialEngagement'),aes(PupilSize,color=ParticipantID))+geom_density() # Not really!
+hist(Samples$PupilSize[Samples$Task=='VisualSearch']) #bimodal?
+ggplot(subset(Samples,Task=='VisualSearch'),aes(PupilSize,color=ParticipantID))+geom_density() # Not really!
+
+
+#RUN SOME ANALYSES AND VISUALIZATIONS
+
+#visualize VELOCITY over trial time for ONE participant/trial
+ggplot(data=subset(Samples,ParticipantID=='1_1_f1' & Trial==1), aes(x=TrialTime, y=abs(MeanVelocityX))) +
+  geom_line()+
+  geom_point() # + facet_grid(.~ParticipantGender)
+
+#visualize ACCELLERATION over trial time for ONE participant/trial
+ggplot(data=subset(Samples,ParticipantID=='1_1_f1' & Trial==1), aes(x=TrialTime, y=abs(MeanAccellerationX))) +
+  geom_line()+
+  geom_point() # + facet_grid(.~ParticipantGender)
+
+#visualize SACCADE AMPLITUDE (difference between VisualSeach and SocialEngagement in terms of saccades)
+ggplot(data=Saccades, aes(x=Saccade,y=Amplitude,group=ParticipantID)) +
+  geom_line(aes(color=ParticipantID))+
+  geom_point(aes(color=ParticipantID))+
+  facet_grid(.~Task)
+
+#visualize FIXATION DURATION (difference between VisualSeach and SocialEngagement in terms of fixations)
+ggplot(data=Fixations, aes(x=Fixation,y=Duration,group=ParticipantID)) +
+  geom_line(aes(color=ParticipantID))+
+  geom_point(aes(color=ParticipantID))+
+  facet_grid(.~Task)
+
+#visualize FIXATION DURATION BY GENDER
+ggplot(data=subset(Fixations, Trial==1), aes(x=Fixation,y=Duration)) +
+  geom_point()+
+  geom_line()+
+  geom_smooth() +
+  facet_grid(.~ParticipantGender)
+
+
+
+
+```
+
+
+```{r}
+Fixations_without= subset(Fixations, Task == "VisualSearch")
+Saccades_without= subset(Saccades, Task == "VisualSearch")
+
+Fixations_one=subset(Fixations, Task=='VisualSearch' & ParticipantID=='2_2_f2')
+Saccades_one=subset(Saccades, Task=='VisualSearch' & ParticipantID=='2_2_f2')
+
+#visualize FIXATION DURATION (Visual Seach)
+ggplot(data=Fixations_without, aes(x=Fixation,y=Duration,group=ParticipantID)) +
+  geom_line(aes(color=ParticipantID))+
+  geom_point(aes(color=ParticipantID))+
+  facet_grid(.~SearchType)
+
+#visualize SACCADE AMPLITUDE (Visual Search)
+ggplot(data=Saccades_without, aes(x=Saccade,y=Amplitude,group=ParticipantID)) +
+  geom_line(aes(color=ParticipantID))+
+  geom_point(aes(color=ParticipantID))+
+  facet_grid(.~SearchType)
+
+
+#visualize FIXATION DURATION (Visual Seach)
+ggplot(data=Fixations_one, aes(x=Fixation,y=Duration,group=ParticipantID)) +
+  geom_line(aes(color=ParticipantID))+
+  geom_point(aes(color=ParticipantID))+
+  facet_grid(.~SearchType)
+
+#visualize SACCADE AMPLITUDE (Visual Search)
+ggplot(data=Saccades_one, aes(x=Saccade,y=Amplitude,group=ParticipantID)) +
+  geom_line(aes(color=ParticipantID))+
+  geom_point(aes(color=ParticipantID))+
+  facet_grid(.~SearchType)
+
+
+
+```
+
+```{r}
+# HEATMAPS (https://gist.github.com/kalebr/6832380)
+library(jpeg)
+library(grid)
+
+jet.colors <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan", "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))
+img <- readJPEG("C:/Users/Viki/Documents/egyetem/komp.mod/eye-tracking workshop/eye-tracking/eyetrackingscripts/foraging/ng021ws.jpg")
+g <- rasterGrob(img, interpolate=TRUE) #to load the image and get it pop up behind the plot
+
+#density
+ggplot(subset(Fixations, Task=='VisualSearch' & ParticipantID=='2_2_f2' & Trial==1), aes(x = PositionX, y = PositionYClean)) +
+  xlim(0,1920) + #the screen resolution
+  ylim(0, 1080) +
+  annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=0, ymax=1080) + 
+  #specify how big the picture should be #not same resolution, the picture can't be fitted using both
+  #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+  scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt") +
+  labs(x="postion x", y="position y")
+
+img <- readJPEG("C:/Users/Viki/Documents/egyetem/komp.mod/eye-tracking workshop/eye-tracking/eyetrackingscripts/foraging/ng150ws.jpg")
+g <- rasterGrob(img, interpolate=TRUE) #to load the image and get it pop up behind the plot
+
+#density
+ggplot(subset(Fixations, Task=='VisualSearch' & ParticipantID=='2_2_f2' & Trial==8), aes(x = PositionX, y = PositionYClean)) +
+  xlim(0,1920) + #the screen resolution
+  ylim(0, 1080) +
+  annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=0, ymax=1080) + 
+  #specify how big the picture should be #not same resolution, the picture can't be fitted using both
+  #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  stat_density2d(geom="raster", aes(fill=..density.., alpha=sqrt(sqrt(..density..))), contour=FALSE, n=1000) + 
+  scale_alpha(range = c(0.1, 0.6)) + scale_fill_gradientn(colours = jet.colors(10), trans="sqrt") +
+  labs(x="postion x", y="position y")
+
+
+x=subset(Fixations, ParticipantID=='2_2_f2' & Trial==4)
+x= x[order(x$Fixation),]
+img <- readJPEG("C:/Users/Viki/Documents/egyetem/komp.mod/eye-tracking workshop/eye-tracking/eyetrackingscripts/foraging/ng064ws.jpg")
+g <- rasterGrob(img, interpolate=TRUE) #to load the image and get it pop up behind the plot
+
+#SCANPATHS
+ggplot(x, aes(x=PositionX, y=PositionYClean, label=Fixation)) +
+  annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  geom_point(size = x$Duration[x$ParticipantID=='2_2_f2' & x$Trial==4]/100, alpha = .7, color='red') +
+  geom_path(size = 1, alpha = 0.3,color='red') +
+  geom_text(aes(label = Fixation, size = 5)) +
+  labs(x="postion x", y="position y")
+
+
+x=subset(Fixations, ParticipantID=='2_2_f2' & Trial==9)
+x= x[order(x$Fixation),]
+
+img <- readJPEG("C:/Users/Viki/Documents/egyetem/komp.mod/eye-tracking workshop/eye-tracking/eyetrackingscripts/foraging/ng151ws.jpg")
+g <- rasterGrob(img, interpolate=TRUE) #to load the image and get it pop up behind the plot
+
+#SCANPATHS
+ggplot(x, aes(x=PositionX, y=PositionYClean, label=Fixation)) +
+  annotation_custom(g, xmin=-Inf, xmax=Inf, ymin=-0, ymax=1080) + #xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) +
+  geom_point(size = x$Duration[x$ParticipantID=='2_2_f2' & x$Trial==9]/100, alpha = .7, color='red') +
+  geom_path(size = 1, alpha = 0.3,color='red') +
+  geom_text(aes(label = Fixation, size = 5)) +
+  labs(x="postion x", y="position y")
+
+
+
+#GROWTH PLOTS PUPIL SIZE
+ggplot(subset(Samples, Task=='SocialEngagement'),   #evt. Fixations,StartTime
+       aes(TrialTime, PupilSize), na.rm=T) +
+       geom_smooth() +
+       xlim(0,5371)+
+       facet_grid( Directionality ~ Ostension) #Task #Ostension #ActorGender #Directionality
+
+ggplot(subset(Samples, Task=='SocialEngagement'),   #evt. Fixations,StartTime
+       aes(TrialTime, PupilSize), na.rm=T) +
+       geom_smooth() +
+       xlim(0,5371)+
+       facet_grid( .~ Directionality ) #Task #Ostension #ActorGender #Directionality
+
+ggplot(subset(Samples, Task=='SocialEngagement'),   #evt. Fixations,StartTime
+       aes(TrialTime, PupilSize), na.rm=T) +
+       geom_smooth() +
+       xlim(0,5371)+
+       facet_grid( .~ Ostension )
+
+```
+
